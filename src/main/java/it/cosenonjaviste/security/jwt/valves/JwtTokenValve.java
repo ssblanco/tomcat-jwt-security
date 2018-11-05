@@ -40,6 +40,10 @@ public class JwtTokenValve extends ValveBase {
 	private boolean updateExpire;
 	
 	private String cookieName;
+	
+	private String ssoLoginUrl;
+	
+	private String backUrlParam;
 
 	@Override
 	public void invoke(Request request, Response response) throws IOException,
@@ -74,6 +78,7 @@ public class JwtTokenValve extends ValveBase {
 			throws IOException, ServletException {
 
 		String token = getToken(request);
+		boolean ssoRedirectIsActive = ssoLoginUrl != null;
 		if (token != null) {
 			JwtTokenVerifier tokenVerifier = JwtTokenVerifier.create(secret);
 			if (tokenVerifier.verify(token)) {
@@ -84,10 +89,20 @@ public class JwtTokenValve extends ValveBase {
 				}
 				this.getNext().invoke(request, response);
 			} else {
-				sendUnauthorizedError(request, response, "Token not valid. Please login first");
+				if (ssoRedirectIsActive){
+					String url = buildSsoRedirectUrl(request);
+					sendUnauthorizedRedirect(request, response, url); 
+				} else {
+					sendUnauthorizedError(request, response, "Token not valid. Please login first");
+				}
 			}
 		} else {
-			sendUnauthorizedError(request, response, "Please login first");
+			if (ssoRedirectIsActive){
+				String url = buildSsoRedirectUrl(request);
+				sendUnauthorizedRedirect(request, response, url); 
+			} else {
+				sendUnauthorizedError(request, response, "Please login first");
+			}
 		}
 	}
 	
@@ -147,6 +162,16 @@ public class JwtTokenValve extends ValveBase {
 	protected void sendUnauthorizedError(Request request, Response response, String message) throws IOException {
 		ResponseWriter.get(request.getHeader("accept")).write(response, HttpServletResponse.SC_UNAUTHORIZED, new AuthErrorResponse(message));
 	}
+	
+	protected void sendUnauthorizedRedirect(Request request, Response response, String url) throws IOException {
+		response.sendRedirect(url);
+	}
+	
+	private String buildSsoRedirectUrl(Request request){
+		String url = (ssoLoginUrl == null) ? null : ssoLoginUrl;
+		url = (backUrlParam == null) ? url : url + "?" + backUrlParam + "="  + request.getRequestURL();
+		return url;
+	}
 
 	public void setSecret(String secret) {
 		this.secret = secret;
@@ -163,5 +188,21 @@ public class JwtTokenValve extends ValveBase {
 
 	public void setCookieName(String cookieName) {
 		this.cookieName = cookieName;
+	}
+
+	public String getSsoLoginUrl() {
+		return ssoLoginUrl;
+	}
+
+	public void setSsoLoginUrl(String ssoLoginUrl) {
+		this.ssoLoginUrl = ssoLoginUrl;
+	}
+
+	public String getBackUrlParam() {
+		return backUrlParam;
+	}
+
+	public void setBackUrlParam(String backUrlParam) {
+		this.backUrlParam = backUrlParam;
 	}
 }
